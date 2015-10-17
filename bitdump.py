@@ -1,11 +1,6 @@
 #!/usr/bin/python3
 
-import urllib.parse
-import urllib.request
-import time
-import math
-import argparse
-import sys
+import urllib.parse, urllib.request, time, math, argparse, sys
 
 DEFAULT_DELAY=0
 
