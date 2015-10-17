@@ -23,8 +23,7 @@ class Printer:
             else:
                 self.outfile.write(('\t'*self.indent)+str+'\n')
 
-    def close(self):
-        self.outfile.close()
+
 
 class Injector:
 
@@ -96,6 +95,7 @@ class Injector:
     def getDataFromTable(self, column, table, index=0, where="1=1"):
         return self.getString("SELECT %s FROM %s.%s WHERE %s LIMIT %d,1"
                               % (column, table.schema, table.name, where, index))
+
 
 
 class Database:
