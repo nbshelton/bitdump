@@ -9,7 +9,7 @@ Since bitdump has to extract data 1 bit at a time, it is an extremely slow metho
 `bitdump.py url success attackfield [otherfield, [otherfield ...]]`
 
   * `url` is the vulnerable injection endpoint.
-  * `success` is a string that is **_only_** present in a response from a successful query (i.e., one that returns at least one row). This string must *not* by present in responses from malformed or unsuccessful (empty-result) queries. bitdump uses this string to determine its 1 bit of data per query.
+  * `success` is a string that is **_only_** present in a response from a successful query (i.e., one that returns at least one row). This string must *not* be present in responses from malformed or unsuccessful (empty-result) queries. bitdump uses this string to determine its 1 bit of data per query.
   * `attackfield` is the name of the vulnerable field. For example, if the url is vulnerable to sql injection in the "username" field, then this should be "username".
   * `otherfield` is any other field that must be present in the request in order for it to be successful. By default, all of these fields' values will be set to "" (an empty string). To assign a different value, use `field:value`.
       
