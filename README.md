@@ -20,16 +20,38 @@ Since bitdump has to extract data 1 bit at a time, it is an extremely slow metho
 Bitdump additionally supports the following optional flags:
 
   * `-h` will print basic usage information.
-      Alias: `--help`
+      
+    Alias: `--help`
 
-  * `-o [OUTFILE]` will print the results of the dump to OUTFILE upon completion. Alias: `--outfile`, `--out`
+  * `-o [OUTFILE]` will print the results of the dump to OUTFILE upon completion.
+      
+    Alias: `--outfile`, `--out`
 
-  * `-d [DELAY]` will pause for DELAY ms before sending each query. Alias: `--delay`
+  * `-d [DELAY]` will pause for DELAY ms before sending each query.
+      
+    Alias: `--delay`
   
-  * `-t` will only dump available table names, not their structure or contents. Alias: `--tables_only`
+  * `-t` will only dump available table names, not their structure or contents.
+      
+    Alias: `--tables_only`
   
-  * `-T [TABLE]` will only dump the contents of TABLE. To specify the table's schema, prepend with a period: SCHEMA.TABLE. If no schema is specified, the current (default) will be used. Alias: `--dump_table`
+  * `-T [TABLE]` will only dump the contents of TABLE. To specify the table's schema, prepend with a period: SCHEMA.TABLE. If no schema is specified, the current (default) will be used.
+      
+    Alias: `--dump_table`
   
-  * `-w [WHERE]` will add WHERE as a where clause when dumping the contents of TABLE. Requires `-T`. Alias: `--where`
+    * `-w [WHERE]` will add WHERE as a where clause when dumping the contents of TABLE. Requires `-T`.
         
-  * `-v` is used to indicate the amount of logging output to display while running the script, from `-v` to `-vvv`. If no verbose flag is given, no logging output will be displayed (but the final database structure will still be printed when the script completes). Alias: `--verbose`
+      Alias: `--where`
+
+    * `--fieldeq [FIELD] [VALUE]` will only dump records in which FIELD equals VALUE. Requires `-T`.
+    
+      See Also:
+      * `--fieldlike` (FIELD LIKE %VALUE%)
+      * `--fieldlt` (FIELD < VALUE)
+      * `--fieldgt` (FIELD > VALUE)
+      * `--fieldlte` (FIELD <= VALUE)
+      * `--fieldgte` (FIELD >= VALUE)
+  
+  * `-v` is used to indicate the amount of logging output to display while running the script, from `-v` to `-vvv`. If no verbose flag is given, no logging output will be displayed (but the final database structure will still be printed when the script completes).
+      
+    Alias: `--verbose`
