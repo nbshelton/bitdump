@@ -1,14 +1,10 @@
 #!/usr/bin/python3
 
 import urllib.parse, urllib.request, time, math, argparse, sys, concurrent.futures
-#from concurrent.futures import *
 
 DEFAULT_DELAY=0
 
 MAX_THREADS=1
-tableExecutor = None
-stringExecutor = None
-charExecutor = None
 
 
 class Printer:
@@ -183,14 +179,16 @@ class Table:
         else:
             return ''
 
+    def getColumn(self, index):
+        name = self.getColumnName(index)
+        PRINTER.print("Got column name: %s" % name, 1, 1)
+        return name
+
     def findColumns(self):
         PRINTER.print("Getting column count...", 1, 1)
         count = self.getColumnCount()
         PRINTER.print("Found %d columns" % count, 1, 1)
-        for i in range(count):
-            name = self.getColumnName(i)
-            PRINTER.print("Got column name: %s" % name, 1, 1)
-            self.columns.append(name)
+        self.columns.extend(list(recordExecutor.map(self.getColumn, range(count))))
 
 
     def getRecordCount(self, where=None):
@@ -199,18 +197,20 @@ class Table:
     def getRecordData(self, recordIndex, column, where=None):
         return self.injector.getDataFromTable(column, self, recordIndex, where)
 
+    def getRecord(self, index, where):
+        record = Record(self)
+        for col in self.columns:
+            data = self.getRecordData(index, col, where)
+            PRINTER.print("Found value '%s'=>'%s' for record %d" % (col, data, index), 1, 2)
+            record.setData(col, data)
+        PRINTER.print("", 1)
+        return record
+
     def findRecords(self, where=None):
         PRINTER.print("Getting record count...", 1, 1)
         count = self.getRecordCount(where)
         PRINTER.print("Found %d records" % count, 1, 1)
-        for i in range(count):
-            record = Record(self)
-            for col in self.columns:
-                data = self.getRecordData(i, col, where)
-                PRINTER.print("Found value '%s'=>'%s' for record %d" % (col, data, i), 1, 2)
-                record.setData(col, data)
-            PRINTER.print("", 1)
-            self.records.append(record)
+        self.records.extend(list(recordExecutor.map(lambda x: self.getRecord(x, where), range(count))))
 
 
 
@@ -318,9 +318,10 @@ class Parser:
 if __name__ == '__main__':
     p = Parser()
 
-    tableExecutor = concurrent.futures.ThreadPoolExecutor(max_workers=max(math.floor(p.args.max_threads*0.05), 1))
-    stringExecutor = concurrent.futures.ThreadPoolExecutor(max_workers=max(math.floor(p.args.max_threads*0.2), 1))
-    charExecutor = concurrent.futures.ThreadPoolExecutor(max_workers=max(math.floor(p.args.max_threads*0.75), 1))
+    tableExecutor = concurrent.futures.ThreadPoolExecutor(max_workers=max(math.floor(p.args.max_threads*0.01), 1))
+    recordExecutor = concurrent.futures.ThreadPoolExecutor(max_workers=max(math.floor(p.args.max_threads*0.09), 1))
+    stringExecutor = concurrent.futures.ThreadPoolExecutor(max_workers=max(math.floor(p.args.max_threads*0.1), 1))
+    charExecutor = concurrent.futures.ThreadPoolExecutor(max_workers=max(math.floor(p.args.max_threads*0.8), 1))
     
     verbosity = 0 if p.args.verbose is None else p.args.verbose
     PRINTER = Printer(verbosity, p.args.outfile)
