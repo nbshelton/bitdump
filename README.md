@@ -66,6 +66,6 @@ Bitdump additionally supports the following optional flags:
   
     Alias: `--file`
   
-  * `-v` is used to indicate the amount of logging output to display while running the script (either `-v` or `-vv`. If no verbose flag is given, no logging output will be displayed (but the final database structure will still be printed when the script completes).
+  * `-v` is used to indicate the amount of logging output to display while running the script (either `-v` or `-vv`). If no verbose flag is given, no logging output will be displayed (but the final database structure will still be printed when the script completes).
       
     Alias: `--verbose`
