@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python
 
 import urllib.parse, urllib.request, time, math, argparse, sys, concurrent.futures
 
