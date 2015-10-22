@@ -1,8 +1,14 @@
 # bitdump
 A tool to extract database data from a blind SQL injection vulnerability -- i.e., one that displays success or failure in some way, but does not actually print any data from the database. Note that this tool will not *find* the vulnerabilities for you; it is assumed one has already been found. This tool will only exploit a given vulnerability to extract data.
 
+Note that at the moment, bitdump is only supported for MySQL databases.
+
 ### When *not* to use bitdump
 Since bitdump has to extract data 1 bit at a time, it is an extremely slow method of reading data. You should probably first check to see if the data may be obtained by other means.
+
+## Requirements
+
+Bitdump requires Python 3.2 or later.
 
 ## Usage
 
