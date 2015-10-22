@@ -22,8 +22,14 @@ Bitdump additionally supports the following optional flags:
   * `-h` will print basic usage information.
       Alias: `--help`
 
-  * `-o [OUTFILE]` will redirect all output to OUTFILE instead of `stdout`. Alias: `--outfile`, `--out`
+  * `-o [OUTFILE]` will print the results of the dump to OUTFILE upon completion. Alias: `--outfile`, `--out`
 
   * `-d [DELAY]` will pause for DELAY ms before sending each query. Alias: `--delay`
+  
+  * `-t` will only dump available table names, not their structure or contents. Alias: `--tables_only`
+  
+  * `-T [TABLE]` will only dump the contents of TABLE. To specify the table's schema, prepend with a period: SCHEMA.TABLE. If no schema is specified, the current (default) will be used. Alias: `--dump_table`
+  
+  * `-w [WHERE]` will add WHERE as a where clause when dumping the contents of TABLE. Requires `-T`. Alias: `--where`
         
   * `-v` is used to indicate the amount of logging output to display while running the script, from `-v` to `-vvv`. If no verbose flag is given, no logging output will be displayed (but the final database structure will still be printed when the script completes). Alias: `--verbose`
