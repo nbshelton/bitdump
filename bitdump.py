@@ -5,7 +5,7 @@ import urllib.parse, urllib.request, time, math, argparse, sys, concurrent.futur
 
 DEFAULT_DELAY=0
 
-MAX_THREADS=50
+MAX_THREADS=1
 tableExecutor = None
 stringExecutor = None
 charExecutor = None
