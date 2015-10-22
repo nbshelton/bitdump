@@ -30,6 +30,10 @@ Bitdump additionally supports the following optional flags:
   * `-d [DELAY]` will pause for DELAY ms before sending each query.
       
     Alias: `--delay`
+
+  * `-n [MAX_THREADS]` will spawn up to MAX_THREADS threads so requests may be made asynchronously.
+  
+    Alias: `--max_threads`
   
   * `-t` will only dump available table names, not their structure or contents.
       
@@ -52,6 +56,6 @@ Bitdump additionally supports the following optional flags:
       * `--fieldlte` (FIELD <= VALUE)
       * `--fieldgte` (FIELD >= VALUE)
   
-  * `-v` is used to indicate the amount of logging output to display while running the script, from `-v` to `-vvv`. If no verbose flag is given, no logging output will be displayed (but the final database structure will still be printed when the script completes).
+  * `-v` is used to indicate the amount of logging output to display while running the script (either `-v` or `-vv`. If no verbose flag is given, no logging output will be displayed (but the final database structure will still be printed when the script completes).
       
     Alias: `--verbose`
