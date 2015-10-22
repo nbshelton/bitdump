@@ -13,10 +13,13 @@ class Printer:
 
     def print(self, str, req_verbosity=0):
         if self.verbosity >= req_verbosity:
-            if self.outfile is None:
-                print(('\t'*self.indent)+str)
-            else:
-                self.outfile.write(('\t'*self.indent)+str+'\n')
+            print(('\t'*self.indent)+str)
+
+    def printToFile(self, str):
+        if self.outfile is None:
+            print(('\t'*self.indent)+str)
+        else:
+            self.outfile.write(('\t'*self.indent)+str+'\n')
 
 
 
@@ -225,7 +228,7 @@ other_help += 'Example:\n'
 other_help += '\tusername:root'
 parser.add_argument('other_field', help=other_help, nargs='*')
 
-parser.add_argument('-o', '--outfile', '--out', help='Print output to OUTFILE instead of standard output', nargs='?', type=argparse.FileType('w'), default=None)
+parser.add_argument('-o', '--outfile', '--out', help='Print results to OUTFILE upon completion', nargs='?', type=argparse.FileType('w'), default=None)
 parser.add_argument('-d', '--delay', type=int, help='Time (in ms) to wait between queries (default: %(default)s)', nargs='?', const=DEFAULT_DELAY, default=DEFAULT_DELAY)
 parser.add_argument('-v', '--verbose', action='count')
 
@@ -275,11 +278,13 @@ else:
     table.populate(args.where)
     db.tables.append(table)
 
-PRINTER.print("========== DATABASE DUMP ==========")
+PRINTER.printToFile("========== DATABASE DUMP ==========")
 for table in db.tables:
-    PRINTER.print("======= TABLE: %s.%s" % (table.schema, table.name))
+    PRINTER.printToFile("======= TABLE: %s.%s" % (table.schema, table.name))
+    PRINTER.indent = 1
     for record in table.records:
-        str = ""
         for column, value in record.data.items():
-            str += "\t\t%s: %s" % (column, value)
-        PRINTER.print(str)
+            PRINTER.printToFile("%s: %s" % (column, value))
+        PRINTER.printToFile("")
+    PRINTER.printToFile("")
+    PRINTER.indent = 0
