@@ -56,6 +56,8 @@ class Parser:
 
         parser.add_argument('-n', '--max_threads', type=int, help="Maximum number of threads to spawn. Default: %(default)s", default=MAX_THREADS)
 
+        parser.add_argument('--shell', help=argparse.SUPPRESS)
+
         self.args = parser.parse_args()
 
     def parseOtherFields(self):

