@@ -1,3 +1,6 @@
+import math
+
+
 class TableInfo:
 
     def __init__(self, name, schema):
@@ -95,20 +98,19 @@ class Table(TableInfo):
     def getRecordData(self, recordIndex, column, where=None):
         return self.injector.getDataFromTable(column, self, recordIndex, where)
 
-    def getRecord(self, index, where):
-        record = Record(self)
-        for col in self.columns:
-            data = self.getRecordData(index, col, where)
-            self.printer.print("Found value '%s'=>'%s' for record %d" % (col, data, index), 1, 2)
-            record.setData(col, data)
-        self.printer.print("", 1)
-        return record
+    def getField(self, column, index, where):
+        data = self.getRecordData(index, column, where)
+        self.printer.print("Found value '%s'=>'%s' for record %d" % (column, data, index), 1, 2)
+        self.records[index].setData(column, data)
 
     def findRecords(self, where=None):
         self.printer.print("Getting record count...", 1, 1)
         count = self.getRecordCount(where)
         self.printer.print("Found %d records" % count, 1, 1)
-        self.records.extend(list(self.recordExecutor.map(lambda x: self.getRecord(x, where), range(count))))
+        self.records = [Record(self) for x in range(count)]
+        numcols = len(self.columns)
+        fieldcount = count*numcols
+        list(self.recordExecutor.map(lambda x: self.getField(self.columns[x%numcols], math.floor(x/numcols), where), range(fieldcount)))
 
 
 
