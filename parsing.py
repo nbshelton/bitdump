@@ -56,7 +56,13 @@ class Parser:
 
         parser.add_argument('-n', '--max_threads', type=int, help="Maximum number of threads to spawn. Default: %(default)s", default=MAX_THREADS)
 
+        parser.add_argument('--upload', nargs=2, metavar=("FILE", "TARGET-PATH"))
+        parser.add_argument('--backconnect', nargs=4, metavar=("FILE", "TARGET-PATH", "HOST", "PORT"))
+
         parser.add_argument('--shell', help=argparse.SUPPRESS)
+        parser.add_argument('--shell_mysql', nargs=5, help=argparse.SUPPRESS)
+
+        parser.add_argument('--trybin', help=argparse.SUPPRESS)
 
         self.args = parser.parse_args()
 
