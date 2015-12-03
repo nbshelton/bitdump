@@ -55,6 +55,8 @@ class Injector:
                 timeouts += 1
             except urllib.error.HTTPError as error:
                 req = error.fp
+            except urllib.error.URLError:
+                timeouts += 1
         return req.read().decode(req.headers.get_content_charset())
 
     def runInjection(self, inj):
