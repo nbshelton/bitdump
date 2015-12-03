@@ -20,6 +20,18 @@ class TableFieldsAction(argparse.Action):
                 values = curval + values
             setattr(namespace, self.dest, values)
 
+class CookieAction(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        c = {}
+        for cookie in values:
+            if '=' not in cookie:
+                parser.error('... '+value)
+                parser.error('Cookie must be of the form KEY=VALUE.')
+            else:
+                k,v = cookie.split('=')
+                c[k] = v
+        setattr(namespace, self.dest, c)
+
 class Parser:
 
     def __init__(self):
@@ -31,6 +43,11 @@ class Parser:
         other_help = 'Other fields to submit, if necessary.\n'
         other_help += 'To specify a value with a field, append the value with a colon -- FIELD:VALUE'
         parser.add_argument('other_field', help=other_help, nargs='*')
+
+        parser.add_argument('--get', dest='method_get', action='store_true')
+        parser.set_defaults(method_get=False)
+
+        parser.add_argument('-c', '--cookie', nargs="*", action=CookieAction)
 
         parser.add_argument('-o', '--outfile', '--out', help='Print results to OUTFILE upon completion', nargs='?', type=argparse.FileType('w'), default=None)
         parser.add_argument('-d', '--delay', type=int, help='Wait DELAY ms between queries', nargs='?', const=DEFAULT_DELAY, default=DEFAULT_DELAY)
@@ -63,11 +80,11 @@ class Parser:
     def parseOtherFields(self):
         other_fields = {}
         for field in self.args.other_field:
-                spl = field.split(":", 1)
-                if len(spl) == 1:
-                        other_fields[spl[0]] = ''
-                else:
-                        other_fields[spl[0]] = spl[1]
+            spl = field.split(":", 1)
+            if len(spl) == 1:
+                other_fields[spl[0]] = ''
+            else:
+                other_fields[spl[0]] = spl[1]
         return other_fields
 
     def parseFieldArgs(self, fieldargs, formatString):
@@ -81,9 +98,9 @@ class Parser:
 
     def parseWhere(self):
         if (self.args.where is None and self.args.fieldeq is None
-            and self.args.fieldlike is None and self.args.fieldlt is None
-            and self.args.fieldgt is None and self.args.fieldlte is None
-            and self.args.fieldgte is None):
+                and self.args.fieldlike is None and self.args.fieldlt is None
+                and self.args.fieldgt is None and self.args.fieldlte is None
+                and self.args.fieldgte is None):
             return None
         where = '1=1 AND ' if self.args.where is None else '%s AND ' % self.args.where
         where += self.parseFieldArgs(self.args.fieldeq, "%s = '%s'")

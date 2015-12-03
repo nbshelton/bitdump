@@ -1,6 +1,7 @@
 import time, urllib.parse, urllib.request, socket, math
+from pprint import pprint
 
-TIMEOUT = 2
+TIMEOUT = 5
 MAX_TIMEOUTS = 5
 
 class TimeoutLimitError(Exception):
@@ -14,7 +15,7 @@ class InjectionError(Exception):
 
 class Injector:
 
-    def __init__(self, url, success, delay, attack_field, other_fields, stringExecutor, charExecutor):
+    def __init__(self, url, success, delay, attack_field, other_fields, stringExecutor, charExecutor, cookies, method_get=False):
         self.url = urllib.parse.urlparse(url, "http")
         self.success = success
         self.delay = (delay/1000)
@@ -22,6 +23,8 @@ class Injector:
         self.other_fields = other_fields
         self.stringExecutor = stringExecutor
         self.charExecutor = charExecutor
+        self.cookies = cookies if cookies is not None else {}
+        self.method_get = method_get
         self.test()
 
     def test(self):
@@ -37,9 +40,21 @@ class Injector:
             if timeouts == MAX_TIMEOUTS:
                 raise TimeoutLimitError(url, timeouts)
             try:
-                req = urllib.request.urlopen(urllib.request.Request(url, urllib.parse.urlencode(data).encode('ascii')), timeout=TIMEOUT);
-            except (socket.timeout, urllib.error.URLError):
+                if (self.method_get):
+                    r = urllib.request.Request(url+"?"+urllib.parse.urlencode(data));
+                else:
+                    r = urllib.request.Request(url, urllib.parse.urlencode(data).encode('ascii'));
+                if len(self.cookies) > 0:
+                    cheader = ""
+                    for k,v in self.cookies.items():
+                        cheader += k+"="+v+"; "
+                    cheader = cheader[:-2]
+                    r.add_header("Cookie", cheader)
+                req = urllib.request.urlopen(r, timeout=TIMEOUT);
+            except socket.timeout:
                 timeouts += 1
+            except urllib.error.HTTPError as error:
+                req = error.fp
         return req.read().decode(req.headers.get_content_charset())
 
     def runInjection(self, inj):

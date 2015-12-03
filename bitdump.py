@@ -44,13 +44,17 @@ if __name__ == '__main__':
     
     verbosity = 0 if p.args.verbose is None else p.args.verbose
     printer = Printer(verbosity, p.args.outfile)
+    try:
+        cookies = p.args.cookie
+    except AttributeError:
+        cookies = None
 
     if p.args.shell is not None:
         stringExecutor = concurrent.futures.ThreadPoolExecutor(max_workers=max(math.floor(1/9*p.args.max_threads), 1))
         charExecutor = concurrent.futures.ThreadPoolExecutor(max_workers=max(math.floor(8/9*p.args.max_threads), 1))
         try:
             print("Loading injector...")
-            injector = injection.Injector(p.args.url, p.args.success, p.args.delay, p.args.attack_field, p.parseOtherFields(), stringExecutor, charExecutor)
+            injector = injection.Injector(p.args.url, p.args.success, p.args.delay, p.args.attack_field, p.parseOtherFields(), stringExecutor, charExecutor, cookies, p.args.method_get)
         except injection.InjectionError:
             print("Failed injection! Are you sure your settings are correct?")
             exit(ERR_INJECTION)
@@ -77,10 +81,9 @@ if __name__ == '__main__':
         charExecutor = concurrent.futures.ThreadPoolExecutor(max_workers=max(math.floor(p.args.max_threads*0.8), 1))
         tableExecutor = None
         recordExecutor = None
-
         try:
             print("Loading injector...")
-            injector = injection.Injector(p.args.url, p.args.success, p.args.delay, p.args.attack_field, p.parseOtherFields(), stringExecutor, charExecutor)
+            injector = injection.Injector(p.args.url, p.args.success, p.args.delay, p.args.attack_field, p.parseOtherFields(), stringExecutor, charExecutor, cookies, p.args.method_get)
         except injection.InjectionError:
             print("Failed injection! Are you sure your settings are correct?")
             exit(ERR_INJECTION)
@@ -131,7 +134,7 @@ if __name__ == '__main__':
 
         try:
             print("Loading injector...")
-            injector = injection.Injector(p.args.url, p.args.success, p.args.delay, p.args.attack_field, p.parseOtherFields(), stringExecutor, charExecutor)
+            injector = injection.Injector(p.args.url, p.args.success, p.args.delay, p.args.attack_field, p.parseOtherFields(), stringExecutor, charExecutor, cookies, p.args.method_get)
             print("Reading file...")
             file = structures.File(injector, p.args.file)
         except injection.InjectionError:
