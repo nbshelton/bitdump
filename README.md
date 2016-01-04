@@ -65,6 +65,10 @@ Bitdump additionally supports the following optional flags:
   * `-f [FILE]` will attempt to dump the contents of FILE instead of database contents. Note that for this to be successful, the database user must have LOAD_FILE() permissions and must have read permissions on the file specified.
   
     Alias: `--file`
+
+  * `--get` will use GET requests instead of POST requests when contacting the target host.
+ 
+  * `-c [KEY]=[VALUE] [KEY]=[VALUE] ...` will add a cookie for each KEY=VALUE pair to each request, for use e.g. when a vulnerable form requires prior authentication.
   
   * `-v` is used to indicate the amount of logging output to display while running the script (either `-v` or `-vv`). If no verbose flag is given, no logging output will be displayed (but the final database structure will still be printed when the script completes).
       
